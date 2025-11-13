@@ -1,9 +1,10 @@
  {
-  "name": "Discord-Automation-App",
+  "name": "discord-automation-app",
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "npx playwright install chromium && tsx src/index.ts"
+    "start": "tsx src/index.ts",
+    "postinstall": "npx playwright install chromium"
   },
   "dependencies": {
     "dotenv": "^16.5.0",
