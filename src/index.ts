@@ -19,17 +19,29 @@ if (!channelUrl) throw new Error("Missing DISCORD_CHANNEL_URL in env");
 async function runDiscordAutomation(params: { message: string; imageUrl?: string }) {
   const { message, imageUrl } = params;
 
-  const agent = await startBrowserAgent({
-    url: "https://discord.com/login",
-    narrate: true,
-    llm: {
-      provider: "anthropic",
-      options: {
-        model: "claude-sonnet-4-20250514",
-        apiKey,
-      },
+const agent = await startBrowserAgent({
+  url: "https://discord.com/login",
+  narrate: true,
+  browser: {
+    launchOptions: {
+      headless: true,                       // <-- KEY: run without X server
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+      ],
     },
-  });
+  },
+  llm: {
+    provider: "anthropic",
+    options: {
+      model: "claude-sonnet-4-20250514",
+      apiKey,
+    },
+  },
+});
+
 
   try {
     console.log("🔐 Logging into Discord...");
