@@ -1,37 +1,27 @@
 import { startBrowserAgent } from "magnitude-core";
 import dotenv from "dotenv";
-import express from "express"
+import express from "express";
 
 dotenv.config();
-const app = express();
-app.use(express.json());
 
-async function
-runAutomation(customMessage?: string)
-{
-    if (customMessage) {
-        process.env.Discord_MESSAGE = 
-    customMessage
-    }
+// Load shared env vars (no DISCORD_MESSAGE anymore)
+const apiKey = process.env.ANTHROPIC_API_KEY;
+const email = process.env.DISCORD_EMAIL;
+const password = process.env.DISCORD_PASSWORD;
+const channelUrl = process.env.DISCORD_CHANNEL_URL;
 
-    return main();
-}
-async function main() {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  const email = process.env.DISCORD_EMAIL;
-  const password = process.env.DISCORD_PASSWORD;
-  const channelUrl = process.env.DISCORD_CHANNEL_URL;
-  const message = process.env.DISCORD_MESSAGE;
+if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY in env");
+if (!email || !password)
+  throw new Error("Missing DISCORD_EMAIL or DISCORD_PASSWORD in env");
+if (!channelUrl) throw new Error("Missing DISCORD_CHANNEL_URL in env");
 
-  if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY in .env");
-  if (!email || !password) throw new Error("Missing DISCORD_EMAIL or DISCORD_PASSWORD in .env");
-  if (!channelUrl) throw new Error("Missing DISCORD_CHANNEL_URL in .env");
-  if (!message) throw new Error("Missing DISCORD_MESSAGE in .env");
+// Helper that actually talks to Discord
+async function runDiscordAutomation(params: { message: string; imageUrl?: string }) {
+  const { message, imageUrl } = params;
 
-  // Start browser under Claude's control
   const agent = await startBrowserAgent({
     url: "https://discord.com/login",
-    narrate: true, // prints what the agent is doing
+    narrate: true,
     llm: {
       provider: "anthropic",
       options: {
@@ -61,41 +51,57 @@ async function main() {
       { data: { url: channelUrl } }
     );
 
-    // 3) Post the message
-    console.log("💬 Posting message...");
-    await agent.act(
-      "In the currently open Discord channel, click into the message input box and send a single chat message " +
-        "with the exact text provided. Do not add anything else before or after it.",
-      { data: { message } }
-    );
+    // 3) Post image + caption OR just caption
+    if (imageUrl) {
+      console.log("🖼️ Uploading image and caption...");
+      await agent.act(
+        "In the currently open Discord channel, upload an image from the given URL and then send a single chat message " +
+          "with the exact caption text provided. Do not add anything else.",
+        { data: { message, imageUrl } }
+      );
+    } else {
+      console.log("💬 Posting text message...");
+      await agent.act(
+        "In the currently open Discord channel, click into the message input box and send a single chat message " +
+          "with the exact text provided. Do not add anything else before or after it.",
+        { data: { message } }
+      );
+    }
 
-    console.log("✅ Finished – message should be posted.");
+    console.log("✅ Finished – message (and optional image) should be posted.");
   } finally {
     await agent.stop();
   }
 }
 
-// HTTP endpoint for external triggers (n8n, curl, etc.)
+// ---- HTTP server for Render / n8n ----
+
+const app = express();
+app.use(express.json({ limit: "10mb" }));
+
 app.post("/discord/send", async (req, res) => {
-  const { message } = req.body;
+  const { message, imageUrl } = req.body as {
+    message?: string;
+    imageUrl?: string;
+  };
+
   if (!message) {
-    return res.status(400).json({ error: "Missing 'message' in request body" });
+    return res.status(400).json({ error: "message is required" });
   }
 
   try {
-    await runAutomation(message);
-    res.json({ success: true, posted: message });
+    await runDiscordAutomation({ message, imageUrl });
+    res.json({ status: "ok" });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error("❌ Error in /discord/send:", err);
+    res.status(500).json({
+      error: "Discord automation failed",
+      details: String(err?.message || err),
+    });
   }
 });
 
-
-main().catch((err) => {
-  console.error("❌ Error running Discord automation:", err);
-  process.exit(1);
-});
-
-app.listen(3000, () => {
-    console.log("Http server running at http://localHost:3000");
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`🔥 Discord automation server running at http://localhost:${port}`);
 });
