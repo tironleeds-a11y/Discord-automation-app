@@ -1,10 +1,10 @@
-{
+ {
   "name": "Discord-Automation-App",
   "type": "module",
   "scripts": {
     "build": "tsc",
     "start": "tsx src/index.ts",
-    "postinstall": "patchright install chromium"
+    "postinstall": "npx playwright install chromium"
   },
   "dependencies": {
     "dotenv": "^16.5.0",
